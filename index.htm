@@ -2,9 +2,18 @@
 <html lang="lt">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Žodžių Rašymo Žaidimas</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Žodžių Žaidimas</title>
   
+  <!-- PWA & Apple Meta Tags -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Rašymas">
+  <meta name="theme-color" content="#3b82f6">
+  
+  <!-- Sugeneruota SVG Ikona, kad nereikėtų papildomo paveiksliuko failo -->
+  <link rel="apple-touch-icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MTIgNTEyIj48cmVjdCB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiIgZmlsbD0iIzNiODJmNiIgcng9IjEwMCIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LXNpemU9IjMwMCIgZm9udC1mYW1pbHk9InNhbnMtc2VyaWYiIGZvbnQtd2VpZ2h0PSJib2xkIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjM1ZW0iIGZpbGw9IndoaXRlIj7FvTwvdGV4dD48L3N2Zz4=">
+
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
   
@@ -23,8 +32,59 @@
     body {
       overscroll-behavior-y: none; 
       touch-action: manipulation;
+      -webkit-user-select: none; /* Safari */
+      -moz-user-select: none; /* Firefox */
+      -ms-user-select: none; /* IE10+/Edge */
+      user-select: none; /* Standard */
+      /* Neleidžiame highlightinti teksto, kad jaustųsi kaip App'sas */
+    }
+    input {
+      -webkit-user-select: text; /* Leidžiame žymėti tik įvesties lauke */
+      user-select: text;
     }
   </style>
+
+  <script>
+    // --- PWA REGISTRAVIMAS (TIESIAI IŠ HTML) ---
+    // Sugeneruojame manifest.json realiu laiku
+    const manifest = {
+      name: "Žodžių Rašymo Žaidimas",
+      short_name: "Rašymas",
+      start_url: location.href,
+      display: "standalone",
+      background_color: "#f0f9ff",
+      theme_color: "#3b82f6",
+      icons: [{
+        src: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MTIgNTEyIj48cmVjdCB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiIgZmlsbD0iIzNiODJmNiIgcng9IjEwMCIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LXNpemU9IjMwMCIgZm9udC1mYW1pbHk9InNhbnMtc2VyaWYiIGZvbnQtd2VpZ2h0PSJib2xkIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjM1ZW0iIGZpbGw9IndoaXRlIj7FvTwvdGV4dD48L3N2Zz4=",
+        sizes: "512x512",
+        type: "image/svg+xml",
+        purpose: "any maskable"
+      }]
+    };
+    
+    const manifestString = JSON.stringify(manifest);
+    const manifestUrl = 'data:application/manifest+json;charset=utf-8,' + encodeURIComponent(manifestString);
+    const link = document.createElement('link');
+    link.rel = 'manifest';
+    link.href = manifestUrl;
+    document.head.appendChild(link);
+
+    // Registruojame minimalų Service Workerį per Blob, kad įrenginys pripažintų failą kaip PWA
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        const swCode = `
+          self.addEventListener('install', (e) => self.skipWaiting());
+          self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
+          self.addEventListener('fetch', (e) => {
+            e.respondWith(fetch(e.request).catch(() => new Response('Offline')));
+          });
+        `;
+        const blob = new Blob([swCode], { type: 'application/javascript' });
+        const swUrl = URL.createObjectURL(blob);
+        navigator.serviceWorker.register(swUrl).catch(console.error);
+      });
+    }
+  </script>
 </head>
 <body class="bg-sky-50">
   <div id="root"></div>
@@ -32,10 +92,8 @@
   <script type="text/babel">
     const { useState, useEffect, useCallback, useRef, Fragment } = React;
 
-    // --- LEISTINI SIMBOLIAI ---
     const VALID_CHARS = "ĄČĘĖĮŠŲŪŽQWERTYUIOPASDFGHJKLZXCVBNM ";
 
-    // --- INTEGRUOTOS IKONOS (nereikalauja išorinių failų) ---
     const Icon = ({ name, className }) => {
       const icons = {
         settings: <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>,
@@ -53,12 +111,12 @@
         star: <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>,
         check: <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>,
         refreshCw: <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>,
-        trophy: <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"></path><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"></path><path d="M4 22h16"></path><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"></path><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"></path><path d="M18 2H6v7a6 6 0 0 0 12 0V2z"></path></svg>
+        trophy: <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"></path><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"></path><path d="M4 22h16"></path><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"></path><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"></path><path d="M18 2H6v7a6 6 0 0 0 12 0V2z"></path></svg>,
+        pencil: <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
       };
       return icons[name] || null;
     };
 
-    // --- IŠMANUSIS KLAIDŲ ALGORITMAS (ŽODŽIAIS) ---
     function getValidationDiff(tWord, cWord) {
       const m = tWord.length;
       const n = cWord.length;
@@ -110,36 +168,44 @@
       return result;
     }
 
-    // Tikriname žodis po žodžio, kad nepersikirstų sakinio dalys
     function getValidationDiffByWords(target, current) {
-      const tWords = target.split(' ').filter(Boolean);
-      const cWords = current.split(' ').filter(Boolean);
+      const tWords = target.split(' ');
+      const cWords = current.split(' ');
 
       const maxWords = Math.max(tWords.length, cWords.length);
       const result = [];
+      let cIndex = 0;
 
       for (let w = 0; w < maxWords; w++) {
         const tWord = tWords[w] || '';
         const cWord = cWords[w] || '';
         
         const wordDiff = getValidationDiff(tWord, cWord);
+        for (let item of wordDiff) {
+           if (item.status !== 'missing') {
+              item.cIndex = cIndex++;
+           } else {
+              item.cIndex = cIndex; 
+           }
+        }
         result.push(...wordDiff);
 
-        // Pridedame tarpą po kiekvieno žodžio (išskyrus paskutinį)
         if (w < maxWords - 1) {
-          if (w < tWords.length && w < cWords.length) {
-            result.push({ char: ' ', status: 'correct', isSpace: true });
-          } else if (w < tWords.length) {
-            result.push({ char: ' ', status: 'missing', isSpace: true });
-          } else {
-            result.push({ char: ' ', status: 'incorrect', isSpace: true });
+          const spaceInTarget = w < tWords.length - 1;
+          const spaceInCurrent = w < cWords.length - 1;
+
+          if (spaceInTarget && spaceInCurrent) {
+              result.push({ char: ' ', status: 'correct', isSpace: true, cIndex: cIndex++ });
+          } else if (spaceInTarget && !spaceInCurrent) {
+              result.push({ char: ' ', status: 'missing', isSpace: true, cIndex: cIndex });
+          } else if (!spaceInTarget && spaceInCurrent) {
+              result.push({ char: ' ', status: 'incorrect', isSpace: true, cIndex: cIndex++ });
           }
         }
       }
       return result;
     }
 
-    // --- PAGRINDINIS KOMPONENTAS ---
     function App() {
       const [gameState, setGameState] = useState('setup'); 
       const [phraseInput, setPhraseInput] = useState('');
@@ -151,7 +217,9 @@
       
       const [isTargetVisible, setIsTargetVisible] = useState(true);
       const [feedbackMsg, setFeedbackMsg] = useState('');
-      const [validationResult, setValidationResult] = useState(null);
+      
+      const [showColors, setShowColors] = useState(false);
+      const [isReviewingErrors, setIsReviewingErrors] = useState(false);
 
       const [currentAttempts, setCurrentAttempts] = useState(1);
       const [stats, setStats] = useState([]); 
@@ -163,7 +231,6 @@
 
       const utteranceRef = useRef(null);
 
-      // --- FILTRAVIMAS TĖVAMS ---
       const handlePhraseChange = (e) => {
         const val = e.target.value.toUpperCase();
         let filtered = '';
@@ -194,74 +261,91 @@
         setCurrentText('');
         setCursorPos(0);
         setFeedbackMsg('');
-        setValidationResult(null);
+        setShowColors(false);
+        setIsReviewingErrors(false);
         setIsTargetVisible(true);
         setCurrentAttempts(1);
         setStats([]);
         setGameState('play');
       };
 
-      // --- KLAVIATŪRA ---
       const handleKeyPress = useCallback((key) => {
-        setFeedbackMsg('');
-        setValidationResult(null); 
-        
+        if (isReviewingErrors) return; 
+
+        let newText = currentText;
+        let newPos = cursorPos;
+
         if (key === 'BACKSPACE') {
           if (cursorPos > 0) {
-            setCurrentText((prev) => prev.slice(0, cursorPos - 1) + prev.slice(cursorPos));
-            setCursorPos((prev) => prev - 1);
+            newText = currentText.slice(0, cursorPos - 1) + currentText.slice(cursorPos);
+            newPos = cursorPos - 1;
           }
         } else if (key === 'SPACE') {
-          setCurrentText((prev) => prev.slice(0, cursorPos) + ' ' + prev.slice(cursorPos));
-          setCursorPos((prev) => prev + 1);
+          if (cursorPos > 0 && currentText[cursorPos - 1] !== ' ' && currentText[cursorPos] !== ' ') {
+            newText = currentText.slice(0, cursorPos) + ' ' + currentText.slice(cursorPos);
+            newPos = cursorPos + 1;
+          }
         } else {
           const char = key.toUpperCase();
           if (VALID_CHARS.includes(char)) {
-            setCurrentText((prev) => prev.slice(0, cursorPos) + char + prev.slice(cursorPos));
-            setCursorPos((prev) => prev + 1);
+            newText = currentText.slice(0, cursorPos) + char + currentText.slice(cursorPos);
+            newPos = cursorPos + 1;
           }
         }
-      }, [cursorPos]);
+
+        setCurrentText(newText);
+        setCursorPos(newPos);
+
+        if (showColors) {
+           const currentTarget = phrases[currentIndex].trim().replace(/\s+/g, ' ');
+           const currentInput = newText.trim().toUpperCase();
+           if (currentInput === currentTarget) {
+               setFeedbackMsg('Puiku! Spausk "Patikrinti" žalią mygtuką! ✨');
+           } else {
+               setFeedbackMsg('Taisyk klaidas. Teisingos raidės lieka žalios!');
+           }
+        } else {
+           setFeedbackMsg('');
+        }
+      }, [cursorPos, currentText, isReviewingErrors, showColors, phrases, currentIndex]);
 
       useEffect(() => {
         const handleKeyDown = (e) => {
           if (showPinModal) return;
           if (gameState === 'setup' && e.key === 'Enter') return;
           if (gameState !== 'play') return;
+          if (isReviewingErrors && e.key !== 'Enter') return;
           
           if (e.key === 'Backspace') {
             e.preventDefault();
             handleKeyPress('BACKSPACE');
           } else if (e.key === 'ArrowLeft') {
-            setCursorPos((prev) => Math.max(0, prev - 1));
-            setValidationResult(null);
+            if(!isReviewingErrors) setCursorPos((prev) => Math.max(0, prev - 1));
           } else if (e.key === 'ArrowRight') {
-            setCursorPos((prev) => Math.min(currentText.length, prev + 1));
-            setValidationResult(null);
+            if(!isReviewingErrors) setCursorPos((prev) => Math.min(currentText.length, prev + 1));
           } else if (e.key === ' ') {
             e.preventDefault();
             handleKeyPress('SPACE');
           } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
             const char = e.key.toUpperCase();
-            // Blokuoja visus pašalinius simbolius iš fizinės klaviatūros
             if (VALID_CHARS.includes(char)) {
               e.preventDefault();
-              setFeedbackMsg('');
-              setCurrentText((prev) => prev.slice(0, cursorPos) + char + prev.slice(cursorPos));
-              setCursorPos((prev) => prev + 1);
-              setValidationResult(null);
+              handleKeyPress(char);
             }
           } else if (e.key === 'Enter') {
             e.preventDefault();
-            checkAnswer();
+            if (isReviewingErrors) {
+                handleFixErrors();
+            } else {
+                checkAnswer();
+            }
           }
         };
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-      }, [gameState, cursorPos, currentText, showPinModal, handleKeyPress]);
+      }, [gameState, cursorPos, currentText, showPinModal, isReviewingErrors, handleKeyPress]);
 
-      // --- GARSAS ---
       const speakText = () => {
         if ('speechSynthesis' in window) {
           window.speechSynthesis.cancel();
@@ -278,23 +362,28 @@
         }
       };
 
-      // --- TIKRINIMAS ---
       const checkAnswer = () => {
         const currentTarget = phrases[currentIndex].trim().replace(/\s+/g, ' ');
-        const currentInput = currentText.trim().toUpperCase().replace(/\s+/g, ' ');
+        const currentInput = currentText.trim().toUpperCase();
 
         if (currentInput === currentTarget) {
           setStats([...stats, { phrase: currentTarget, attempts: currentAttempts }]);
           setGameState('success');
           setFeedbackMsg('');
-          setValidationResult(null);
+          setShowColors(false);
+          setIsReviewingErrors(false);
           return;
         }
 
         setCurrentAttempts(prev => prev + 1);
-        const diffResult = getValidationDiffByWords(currentTarget, currentInput);
-        setValidationResult(diffResult);
-        setFeedbackMsg('Pataisyk raudonas raides! ✏️');
+        setShowColors(true);
+        setIsReviewingErrors(true);
+        setFeedbackMsg('Pažiūrėk į klaidas! Spausk oranžinį mygtuką, kad galėtum taisyti.');
+      };
+
+      const handleFixErrors = () => {
+        setIsReviewingErrors(false);
+        setFeedbackMsg('Taisyk klaidas. Teisingos raidės lieka žalios! ✏️');
       };
 
       const handleNextWord = () => {
@@ -303,14 +392,14 @@
           setCurrentText('');
           setCursorPos(0);
           setCurrentAttempts(1);
-          setValidationResult(null);
+          setShowColors(false);
+          setIsReviewingErrors(false);
           setGameState('play');
         } else {
           setGameState('summary');
         }
       };
 
-      // --- PIN KODAS ---
       const handleEyeClick = () => {
         if (isTargetVisible) {
           setIsTargetVisible(false);
@@ -343,112 +432,153 @@
         }
       };
 
-      // --- ATVAIZDAVIMAS ---
-      const renderEditMode = () => {
-        if (!currentText && cursorPos === 0) {
+      const renderTextContent = () => {
+        if (!currentText && cursorPos === 0 && !showColors) {
            return (
-             <span className="relative inline-block h-[1.2em]">
-               <span className="absolute left-1/2 -translate-x-1/2 top-[10%] bottom-[10%] w-[3px] bg-blue-500 animate-pulse rounded-full"></span>
-             </span>
+             <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-40">
+                <span className="text-lg sm:text-2xl text-gray-400 font-medium text-center">Spausk raides apačioje</span>
+             </div>
            );
         }
 
-        const elements = [];
-        let currentWordChars = [];
+        const cursorEl = (
+           <span className="absolute -left-[2px] sm:-left-[3px] top-[10%] bottom-[10%] w-[3px] sm:w-[4px] bg-blue-500 animate-pulse rounded-full z-10"></span>
+        );
 
-        const flushWord = () => {
-          if (currentWordChars.length > 0) {
-            elements.push(
-              <span key={`word-${elements.length}`} className="inline-block whitespace-nowrap">
-                {currentWordChars}
-              </span>
-            );
-            currentWordChars = [];
-          }
-        };
-
-        for (let i = 0; i < currentText.length; i++) {
-          const char = currentText[i];
-          const isCursorHere = cursorPos === i + 1;
-          const isCursorBeforeFirst = cursorPos === 0 && i === 0;
-
-          const cursorEl = (
-             <span className={`absolute ${isCursorBeforeFirst ? '-left-[2px] sm:-left-[3px]' : '-right-[2px] sm:-right-[3px]'} top-[10%] bottom-[10%] w-[3px] sm:w-[4px] bg-blue-500 animate-pulse rounded-full z-10`}></span>
-          );
-
-          if (char === ' ') {
-            flushWord();
-            elements.push(
-              <span
-                key={`space-${i}`}
-                onClick={(e) => { e.stopPropagation(); setCursorPos(i+1); }}
-                className="cursor-pointer inline-block px-1.5 sm:px-2 relative"
-              >
-                &nbsp;
-                {isCursorBeforeFirst && cursorEl}
-                {isCursorHere && cursorEl}
-              </span>
-            );
-          } else {
-            currentWordChars.push(
-              <span
-                key={`char-${i}`}
-                onClick={(e) => { e.stopPropagation(); setCursorPos(i+1); }}
-                className="cursor-pointer hover:text-blue-500 relative px-[1px] sm:px-[2px]"
-              >
-                {char}
-                {isCursorBeforeFirst && cursorEl}
-                {isCursorHere && cursorEl}
-              </span>
-            );
-          }
-        }
-        flushWord();
-        return elements;
-      };
-
-      const renderValidationMode = () => {
-        const elements = [];
-        let currentWordEls = [];
-
-        const flushWord = () => {
-          if (currentWordEls.length > 0) {
-            elements.push(
-              <span key={`vword-${elements.length}`} className="inline-block whitespace-nowrap">
-                {currentWordEls}
-              </span>
-            );
-            currentWordEls = [];
-          }
-        };
-
-        validationResult.forEach((item, idx) => {
-          if (item.isSpace) {
-            flushWord();
-            // Nereikalingi tarpai arba trūkstami tarpai dabar tiesiog atvaizduojami tvarkingiau
-            if (item.status === 'missing') {
-               elements.push(<span key={`vspace-${idx}`} className="inline-block px-1.5 sm:px-2">&nbsp;</span>);
-            } else if (item.status === 'incorrect') {
-               elements.push(<span key={`vspace-${idx}`} className="inline-block px-1.5 sm:px-2 bg-red-100 border-b-[3px] border-red-400 rounded-sm">&nbsp;</span>);
-            } else {
-               elements.push(<span key={`vspace-${idx}`} className="inline-block px-1.5 sm:px-2">&nbsp;</span>);
-            }
-          } else {
-            let baseStyles = "inline-block px-[2px] mx-[1px] font-bold";
-            let el;
+        if (showColors) {
+            const target = phrases[currentIndex].trim().replace(/\s+/g, ' ');
+            const diff = getValidationDiffByWords(target, currentText);
             
-            if (item.status === 'correct') {
-              el = <span key={`vc-${idx}`} className={`${baseStyles} text-green-600`}>{item.char}</span>;
-            } else if (item.status === 'incorrect') {
-              el = <span key={`vc-${idx}`} className={`${baseStyles} text-red-500 line-through decoration-red-500 decoration-[3px] opacity-80`}>{item.char}</span>;
-            } else if (item.status === 'missing') {
-              el = <span key={`vc-${idx}`} className={`${baseStyles} text-gray-300 font-black`}>_</span>;
+            const elements = [];
+            let currentWordEls = [];
+            let cursorRendered = false;
+
+            const flushWord = () => {
+              if (currentWordEls.length > 0) {
+                elements.push(
+                  <span key={`vword-${elements.length}`} className="inline-block whitespace-nowrap">
+                    {currentWordEls}
+                  </span>
+                );
+                currentWordEls = [];
+              }
+            };
+
+            diff.forEach((item, idx) => {
+              const isCursorHere = !isReviewingErrors && !cursorRendered && (cursorPos === item.cIndex);
+              if (isCursorHere) cursorRendered = true;
+
+              let elContent = null;
+              let baseStyles = "relative inline-block "; 
+
+              if (item.isSpace) {
+                 flushWord();
+                 if (item.status === 'missing') {
+                    elContent = <span className="inline-block px-1.5 sm:px-2 text-gray-400 font-bold border-b-[3px] border-gray-400">_</span>;
+                 } else if (item.status === 'incorrect') {
+                    elContent = <span className="inline-block px-1.5 sm:px-2 bg-red-100 border-b-[3px] border-red-400 rounded-sm">&nbsp;</span>;
+                 } else {
+                    elContent = <span className="inline-block px-1.5 sm:px-2">&nbsp;</span>;
+                 }
+              } else {
+                 baseStyles += "px-[2px] mx-[1px] font-bold ";
+                 if (item.status === 'correct') {
+                    baseStyles += "text-green-600";
+                    elContent = item.char;
+                 } else if (item.status === 'incorrect') {
+                    baseStyles += "text-red-500 line-through decoration-red-500 decoration-[3px] opacity-80";
+                    elContent = item.char;
+                 } else if (item.status === 'missing') {
+                    baseStyles += "text-gray-300 font-black";
+                    elContent = '_';
+                 }
+              }
+
+              const onClickHandler = (e) => {
+                 if (!isReviewingErrors) {
+                     e.stopPropagation();
+                     if (item.status !== 'missing') {
+                         setCursorPos(item.cIndex + 1);
+                     } else {
+                         setCursorPos(item.cIndex);
+                     }
+                 }
+              };
+
+              let el = (
+                  <span key={`vc-${idx}`} className={baseStyles} onClick={onClickHandler} style={{cursor: isReviewingErrors ? 'default' : 'pointer'}}>
+                      {isCursorHere && cursorEl}
+                      {elContent}
+                  </span>
+              );
+
+              if (item.isSpace) {
+                  elements.push(el);
+              } else {
+                  currentWordEls.push(el);
+              }
+            });
+            
+            flushWord();
+
+            if (!isReviewingErrors && !cursorRendered && cursorPos === currentText.length) {
+                elements.push(
+                    <span key="cursor-end" className="relative inline-block h-[1.2em]">
+                       {cursorEl}
+                    </span>
+                );
             }
-            currentWordEls.push(el);
-          }
-        });
-        flushWord();
-        return elements;
+
+            return elements;
+
+        } else {
+            const elements = [];
+            let currentWordChars = [];
+
+            const flushWord = () => {
+              if (currentWordChars.length > 0) {
+                elements.push(
+                  <span key={`word-${elements.length}`} className="inline-block whitespace-nowrap">
+                    {currentWordChars}
+                  </span>
+                );
+                currentWordChars = [];
+              }
+            };
+
+            for (let i = 0; i < currentText.length; i++) {
+              const char = currentText[i];
+              const isCursorHere = cursorPos === i;
+
+              if (char === ' ') {
+                flushWord();
+                elements.push(
+                  <span key={`space-${i}`} onClick={(e) => { e.stopPropagation(); setCursorPos(i+1); }} className="cursor-pointer inline-block px-1.5 sm:px-2 relative">
+                    {isCursorHere && cursorEl}
+                    &nbsp;
+                  </span>
+                );
+              } else {
+                currentWordChars.push(
+                  <span key={`char-${i}`} onClick={(e) => { e.stopPropagation(); setCursorPos(i+1); }} className="cursor-pointer hover:text-blue-500 relative px-[1px] sm:px-[2px]">
+                    {isCursorHere && cursorEl}
+                    {char}
+                  </span>
+                );
+              }
+            }
+            flushWord();
+
+            if (cursorPos === currentText.length) {
+                elements.push(
+                    <span key="cursor-end" className="relative inline-block h-[1.2em]">
+                       {cursorEl}
+                    </span>
+                );
+            }
+
+            return elements;
+        }
       };
 
       const keyboardRows = [
@@ -539,7 +669,7 @@
             {/* --- PLAY EKRANAS --- */}
             {gameState === 'play' && (
               <div className="flex flex-col h-screen max-h-screen overflow-hidden animate-[fadeIn_0.3s_ease-out]">
-                <div className="bg-blue-500 text-white p-3 sm:p-4 rounded-b-3xl shadow-md flex flex-col gap-2 sm:gap-4 relative z-10 shrink-0">
+                <div className="bg-blue-500 text-white p-3 sm:p-4 rounded-b-3xl shadow-md flex flex-col gap-2 sm:gap-4 relative z-10 shrink-0 pt-safe">
                   <div className="flex justify-between items-center px-1 sm:px-2">
                     <button 
                       onClick={handleSetupClick}
@@ -585,35 +715,30 @@
                 <div className="flex flex-col items-center justify-center p-3 sm:p-4 w-full shrink-0">
                   <div 
                     className={`w-full max-w-xl bg-white border-4 border-dashed rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-inner relative flex items-center justify-center min-h-[100px] sm:min-h-[120px] transition-colors
-                      ${validationResult ? 'border-orange-300 bg-orange-50/30' : 'border-gray-300'}
+                      ${isReviewingErrors ? 'border-orange-300 bg-orange-50/50' : 'border-gray-300'}
                     `}
                     onClick={() => {
-                      setCursorPos(currentText.length);
-                      setValidationResult(null); 
+                      if (!isReviewingErrors) {
+                        setCursorPos(currentText.length);
+                      }
                     }}
                   >
-                    {!currentText && cursorPos === 0 && !validationResult && (
-                       <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-40">
-                          <span className="text-lg sm:text-2xl text-gray-400 font-medium text-center">Spausk raides apačioje</span>
-                       </div>
-                    )}
-
-                    <div className="text-3xl sm:text-4xl lg:text-5xl font-bold leading-[1.6] sm:leading-[1.8] text-center w-full select-none font-mono tracking-wide flex flex-wrap justify-center items-center content-center gap-y-2">
-                      {validationResult ? renderValidationMode() : renderEditMode()}
+                    <div className="text-3xl sm:text-4xl lg:text-5xl leading-[1.6] sm:leading-[1.8] text-center w-full select-none font-mono tracking-wide flex flex-wrap justify-center items-center content-center gap-y-2">
+                      {renderTextContent()}
                     </div>
                   </div>
                 </div>
                 
                 <div className="h-10 sm:h-12 w-full px-4 flex items-center justify-center shrink-0">
                   {feedbackMsg && (
-                    <div className="bg-orange-100 text-orange-700 px-4 py-2 rounded-xl sm:rounded-2xl font-medium text-sm sm:text-lg shadow-sm border border-orange-200 text-center w-full max-w-xl truncate flex items-center justify-center gap-2">
-                      <Icon name="xCircle" className="w-5 h-5 inline" />
+                    <div className={`px-4 py-2 rounded-xl sm:rounded-2xl font-medium text-sm sm:text-lg shadow-sm border text-center w-full max-w-xl truncate flex items-center justify-center gap-2 animate-in slide-in-from-bottom-2 ${isReviewingErrors ? 'bg-orange-100 text-orange-700 border-orange-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
+                      <Icon name={isReviewingErrors ? "xCircle" : "pencil"} className="w-5 h-5 inline" />
                       {feedbackMsg}
                     </div>
                   )}
                 </div>
 
-                <div className="w-full px-1 sm:px-4 flex flex-col gap-1.5 sm:gap-2.5 max-w-xl mx-auto mt-auto pb-2 shrink-0">
+                <div className={`w-full px-1 sm:px-4 flex flex-col gap-1.5 sm:gap-2.5 max-w-xl mx-auto mt-auto pb-2 shrink-0 transition-opacity duration-300 ${isReviewingErrors ? 'opacity-40 pointer-events-none' : 'opacity-100'}`}>
                   {keyboardRows.map((row, rowIndex) => (
                     <div key={rowIndex} className="flex justify-center gap-1 sm:gap-2 w-full">
                       {row.map((key) => (
@@ -645,14 +770,24 @@
                   </div>
                 </div>
 
-                <div className="px-2 sm:px-4 mt-2 sm:mt-4 mb-4 sm:mb-6 max-w-xl mx-auto w-full shrink-0">
-                  <button
-                    onClick={checkAnswer}
-                    className="w-full bg-green-500 hover:bg-green-600 text-white text-xl sm:text-3xl font-bold py-3 sm:py-5 rounded-xl sm:rounded-2xl shadow-[0_4px_0_rgb(22,163,74)] sm:shadow-[0_6px_0_rgb(22,163,74)] active:shadow-none active:translate-y-[4px] sm:active:translate-y-[6px] transition-all flex justify-center items-center gap-2 sm:gap-3 uppercase tracking-wide"
-                  >
-                    <Icon name="checkCircle2" className="w-6 h-6 sm:w-8 sm:h-8 inline" />
-                    Patikrinti
-                  </button>
+                <div className="px-2 sm:px-4 mt-2 sm:mt-4 mb-4 sm:mb-6 max-w-xl mx-auto w-full shrink-0 pb-safe">
+                  {isReviewingErrors ? (
+                    <button
+                      onClick={handleFixErrors}
+                      className="w-full bg-orange-500 hover:bg-orange-600 text-white text-xl sm:text-3xl font-bold py-3 sm:py-5 rounded-xl sm:rounded-2xl shadow-[0_4px_0_rgb(234,88,12)] sm:shadow-[0_6px_0_rgb(234,88,12)] active:shadow-none active:translate-y-[4px] sm:active:translate-y-[6px] transition-all flex justify-center items-center gap-2 sm:gap-3 uppercase tracking-wide animate-pulse"
+                    >
+                      <Icon name="pencil" className="w-6 h-6 sm:w-8 sm:h-8 inline" />
+                      Taisyti klaidas
+                    </button>
+                  ) : (
+                    <button
+                      onClick={checkAnswer}
+                      className="w-full bg-green-500 hover:bg-green-600 text-white text-xl sm:text-3xl font-bold py-3 sm:py-5 rounded-xl sm:rounded-2xl shadow-[0_4px_0_rgb(22,163,74)] sm:shadow-[0_6px_0_rgb(22,163,74)] active:shadow-none active:translate-y-[4px] sm:active:translate-y-[6px] transition-all flex justify-center items-center gap-2 sm:gap-3 uppercase tracking-wide"
+                    >
+                      <Icon name="checkCircle2" className="w-6 h-6 sm:w-8 sm:h-8 inline" />
+                      Patikrinti
+                    </button>
+                  )}
                 </div>
               </div>
             )}
@@ -733,7 +868,7 @@
                   </div>
                 </div>
 
-                <div className="flex justify-center mt-auto">
+                <div className="flex justify-center mt-auto pb-safe">
                   <button
                     onClick={handleSetupClick}
                     className="bg-blue-500 hover:bg-blue-600 text-white text-xl sm:text-2xl font-bold py-4 sm:py-5 px-10 sm:px-12 rounded-full shadow-[0_6px_0_rgb(37,99,235)] active:shadow-none active:translate-y-[6px] transition-all flex items-center justify-center gap-3 relative pr-12 w-full sm:w-auto"
