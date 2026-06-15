@@ -215,7 +215,7 @@
       const [currentText, setCurrentText] = useState('');
       const [cursorPos, setCursorPos] = useState(0);
       
-      const [isTargetVisible, setIsTargetVisible] = useState(true);
+      const [isTargetVisible, setIsTargetVisible] = useState(false);
       const [feedbackMsg, setFeedbackMsg] = useState('');
       
       const [showColors, setShowColors] = useState(false);
@@ -263,7 +263,7 @@
         setFeedbackMsg('');
         setShowColors(false);
         setIsReviewingErrors(false);
-        setIsTargetVisible(true);
+        setIsTargetVisible(false);
         setCurrentAttempts(1);
         setStats([]);
         setGameState('play');
@@ -420,7 +420,7 @@
 
       const handlePinSubmit = (e) => {
         e.preventDefault();
-        if (pinValue === '367') {
+        if (pinValue === '369') {
           if (pinAction === 'showEye') {
             setIsTargetVisible(true);
           } else if (pinAction === 'goSetup') {
@@ -892,7 +892,7 @@
                   </div>
                   <h3 className="text-xl sm:text-2xl font-bold text-center text-gray-800 mb-2">Tėvelių kodas</h3>
                   <p className="text-center text-gray-500 mb-6 text-xs sm:text-sm">
-                    Įveskite kodą (367), kad galėtumėte tęsti.
+                    Įveskite kodą (369), kad galėtumėte tęsti.
                   </p>
                   
                   <form onSubmit={handlePinSubmit} className="space-y-4">
